@@ -8,7 +8,6 @@ import nagiosplugin
 import pypuppetdb
 import re
 
-
 _log = logging.getLogger('nagiosplugin')
 
 
@@ -30,6 +29,7 @@ class ListContext(nagiosplugin.Context):
 class PuppetNodeSync(nagiosplugin.Resource):
 	def __init__(self, args):
 		self.args = args
+
 		self.now = datetime.datetime.now(datetime.timezone.utc)
 
 	def check_in_sync(self, time, max_diff=60):
@@ -41,6 +41,7 @@ class PuppetNodeSync(nagiosplugin.Resource):
 			return True
 
 	def probe(self):
+		_log.debug("Connecting to PuppetDB on %s:%s", self.args.db, self.args.port)
 		pdb = pypuppetdb.connect(host=self.args.db, port=self.args.port, timeout=self.args.timeout)
 
 		nodes = pdb.nodes()
@@ -54,23 +55,27 @@ class PuppetNodeSync(nagiosplugin.Resource):
 
 		for node in nodes:
 			nodename = str(node)
+			_log.debug("Processing node %s", nodename)
 			node_status["total"].append(nodename)
 
 			if r_exc is not None and r_exc.match(nodename):
 				node_status["ignored"].append(nodename)
 				continue
 
+			_log.debug("Querying PuppetDB reports for node %s", nodename)
 			d = pdb._query(endpoint="reports", query='["and",["=","certname","%s"],["=","latest_report?",true]]' % str(node))
 			if len(d) != 1:
-				node_status["total"].append(nodename)
+				_log.debug("Found no report for hostname %s", nodename)
+				node_status["no_report"].append(nodename)
 				continue
 			else:
 				status = d[0]["status"]
+				_log.debug("Found report for hostname %s with status: %s", nodename, status)
 				if status == "unchanged":
-					node_status["no_report"].append(nodename)
+					node_status["unchanged"].append(nodename)
 				elif status == "failed":
 					node_status["failed"].append(nodename)
-					print(str(node), node.report_timestamp, status, "FAILED")
+					# print(str(node), node.report_timestamp, status, "FAILED")
 				elif status == "changed":
 					node_status["changed"].append(nodename)
 				else:
@@ -78,9 +83,10 @@ class PuppetNodeSync(nagiosplugin.Resource):
 
 				if self.check_in_sync(node.report_timestamp, self.args.sync_time):
 					node_status["in_sync"].append(nodename)
+					_log.debug("Hostname %s is in sync", nodename)
 				else:
 					node_status["no_sync"].append(nodename)
-					print(str(node), node.report_timestamp, status, "NO SYNC")
+					_log.debug("Hostname %s is out of sync", nodename)
 
 		yield nagiosplugin.Metric('nodes_total', len(node_status["total"]))
 		yield nagiosplugin.Metric('nodes_ignored', len(node_status["ignored"]))
