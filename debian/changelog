@@ -1,0 +1,5 @@
+check-puppet-nodesync (0.10) UNRELEASED; urgency=low
+
+  * Initial version
+
+ -- Dr. Torge Szczepanek <debian@cygnusnetworks.de>  Tue, 12 Sep 2017 16:38:37 +0200
